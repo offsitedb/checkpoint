@@ -1,0 +1,59 @@
+# OffsiteDB Checkpoint — seal a restore-drilled snapshot before your migration runs.
+#
+#   - name: Checkpoint database before migration
+#     uses: offsitedb/checkpoint@v1
+#     with:
+#       api-key: ${{ secrets.OFFSITEDB_API_KEY }}
+#       database: prod-api
+#   - name: Run migrations
+#     run: npm run migrate
+name: "OffsiteDB Checkpoint"
+description: "Seal a tagged, restore-drilled Postgres snapshot before deploys and migrations"
+branding:
+  icon: "database"
+  color: "green"
+inputs:
+  url:
+    description: "Base URL of your OffsiteDB instance"
+    required: false
+    default: "https://offsitedb.com"
+  api-key:
+    description: "OffsiteDB API key (Settings → API access)"
+    required: true
+  database:
+    description: "Database name or id in OffsiteDB"
+    required: true
+  tag:
+    description: "Checkpoint tag"
+    required: false
+    default: "pre-deploy-${{ github.sha }}"
+  timeout-seconds:
+    description: "How long to wait for the snapshot + restore drill to complete"
+    required: false
+    default: "900"
+runs:
+  using: "composite"
+  steps:
+    - name: Seal checkpoint
+      shell: bash
+      env:
+        OFFSITEDB_URL: ${{ inputs.url }}
+        OFFSITEDB_API_KEY: ${{ inputs.api-key }}
+        OFFSITEDB_DATABASE: ${{ inputs.database }}
+        OFFSITEDB_TAG: ${{ inputs.tag }}
+        OFFSITEDB_TIMEOUT: ${{ inputs.timeout-seconds }}
+      run: |
+        echo "Sealing checkpoint for '$OFFSITEDB_DATABASE' (tag: $OFFSITEDB_TAG)..."
+        BODY=$(jq -n --arg db "$OFFSITEDB_DATABASE" --arg tag "$OFFSITEDB_TAG" \
+          '{database: $db, tag: $tag}')
+        RESPONSE=$(curl -sS --max-time "$OFFSITEDB_TIMEOUT" -X POST "$OFFSITEDB_URL/api/checkpoint" \
+          -H "Authorization: Bearer $OFFSITEDB_API_KEY" \
+          -H "Content-Type: application/json" \
+          -d "$BODY") || { echo "::error::Could not reach OffsiteDB — migration should not proceed"; exit 1; }
+        echo "$RESPONSE" | jq . 2>/dev/null || echo "$RESPONSE"
+        OK=$(echo "$RESPONSE" | jq -r '.ok // false' 2>/dev/null)
+        if [ "$OK" != "true" ]; then
+          echo "::error::Checkpoint failed — migration should not proceed"
+          exit 1
+        fi
+        echo "Checkpoint sealed: $(echo "$RESPONSE" | jq -r '"\(.id) · \(.size) · drill: \(.restore_drill)"')"

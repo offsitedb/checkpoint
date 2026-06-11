@@ -39,6 +39,12 @@ encrypted, shipped, **and restore-drilled** the snapshot on a real Postgres clus
 | `tag` | no | `pre-deploy-<sha>` | Tag written into the snapshot ledger, so you can find "the one right before deploy 4f3a9c1". |
 | `timeout-seconds` | no | `900` | How long to wait for the dump + restore drill. Raise for very large databases. |
 
+## Requirements
+
+`curl` and `jq` must be available on the runner. Both are pre-installed on all
+GitHub-hosted runners (Ubuntu, macOS, Windows). On a **self-hosted** runner,
+install them first — e.g. `sudo apt-get install -y curl jq`.
+
 ## What a failure looks like
 
 If the backup or its restore drill fails, the step exits non-zero with:
